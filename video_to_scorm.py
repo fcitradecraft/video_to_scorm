@@ -277,8 +277,12 @@ def main():
 
     # Subtitle handling
     if args.subtitles:
-        srt_path = Path(args.subtitles)
-        transcript = parse_srt(srt_path)
+        srt_src = Path(args.subtitles)
+        transcript = parse_srt(srt_src)
+        srt_path = output_dir / srt_src.name
+        if srt_src.resolve() != srt_path.resolve():
+            shutil.copy(srt_src, srt_path)
+        sections_input_path = srt_src.with_suffix(".sections")
     else:
         if is_url:
             parser.error(
@@ -286,18 +290,25 @@ def main():
             )
         srt_path = output_dir / f"{Path(video_src).stem}.srt"
         transcript = transcribe_to_srt(video_src, srt_path)
+        sections_input_path = srt_path.with_suffix(".sections")
 
     # Always emit a Markdown transcript alongside the subtitles
     md_path = srt_path.with_suffix(".md")
     generate_markdown(transcript, md_path)
     print(f"📄 Markdown transcript: {md_path}")
 
-    # Load custom sections if available
-    sections_path = srt_path.with_suffix(".sections")
-    sections = load_sections(sections_path, transcript)
-    if not sections:
-        sections = auto_generate_sections(transcript, args.interval)
-        save_sections(sections, sections_path)
+    # Load custom sections if available and ensure a .sections file in the output dir
+    final_sections_path = output_dir / f"{output_dir.name}.sections"
+    sections = load_sections(sections_input_path, transcript)
+    if sections:
+        if sections_input_path.resolve() != final_sections_path.resolve():
+            shutil.copy(sections_input_path, final_sections_path)
+    else:
+        sections = load_sections(final_sections_path, transcript)
+        if not sections:
+            sections = auto_generate_sections(transcript, args.interval)
+            save_sections(sections, final_sections_path)
+    print(f"📄 Sections file: {final_sections_path}")
 
     # Generate SCORM player
     html_file = generate_player_html(transcript, sections, args.title, output_dir, video_src, is_url)
