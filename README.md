@@ -5,10 +5,10 @@ Generate a simple SCORM package from a video and accompanying subtitles.
 ## Features
 - Creates an HTML video player packaged as a SCORM 1.2 module.
 - Accepts either a local video file or an external video URL.
-- If a `.srt` subtitle file is provided, a Markdown transcript is generated.
-- If no `.srt` is provided for a local video, the script transcribes the video
-  using [Whisper](https://github.com/openai/whisper) and saves both `.srt` and
-  Markdown transcripts.
+- Generates a Markdown transcript alongside any supplied subtitles.
+- When a local video lacks subtitles, automatically transcribes it with
+  [Whisper](https://github.com/openai/whisper) and emits both `.srt` and
+  Markdown transcript files.
 - Emits a companion `.sections` file with generic section titles based on a
   configurable interval.
 
