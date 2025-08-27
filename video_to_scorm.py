@@ -48,6 +48,69 @@ def time_to_seconds(time_str):
     return int(h) * 3600 + int(m) * 60 + int(s)
 
 # ----------------------------
+# TIMESTAMP HELPERS
+# ----------------------------
+def seconds_to_timestamp(seconds):
+    """Convert float seconds to SRT timestamp."""
+    td = timedelta(seconds=seconds)
+    total_seconds = int(td.total_seconds())
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    secs = total_seconds % 60
+    milliseconds = int(round((seconds - total_seconds) * 1000))
+    return f"{hours:02}:{minutes:02}:{secs:02},{milliseconds:03}"
+
+
+# ----------------------------
+# TRANSCRIBE VIDEO
+# ----------------------------
+def transcribe_to_srt(video_path, srt_path):
+    """Transcribe ``video_path`` using Whisper and save as ``srt_path``.
+
+    Returns the transcript structure compatible with ``parse_srt``.
+    """
+
+    if whisper is None:  # pragma: no cover - optional dependency
+        raise RuntimeError("Whisper is required for auto-transcription but is not installed")
+
+    print("🎤 No .srt provided → transcribing video with Whisper...")
+    model = whisper.load_model("base")
+    result = model.transcribe(str(video_path))
+
+    transcript = []
+    lines = []
+    for i, seg in enumerate(result.get("segments", []), start=1):
+        start = seconds_to_timestamp(seg["start"])
+        end = seconds_to_timestamp(seg["end"])
+        text = seg.get("text", "").strip()
+        lines.append(f"{i}\n{start} --> {end}\n{text}\n")
+        transcript.append({
+            "index": i,
+            "start": start,
+            "end": end,
+            "start_seconds": int(seg["start"]),
+            "text": text,
+        })
+
+    with open(srt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    print(f"📝 Saved auto-generated subtitles: {srt_path}")
+
+    return transcript
+
+
+# ----------------------------
+# GENERATE MARKDOWN TRANSCRIPT
+# ----------------------------
+def generate_markdown(transcript, md_path):
+    """Write ``transcript`` to ``md_path`` in a simple Markdown format."""
+
+    with open(md_path, "w", encoding="utf-8") as f:
+        for entry in transcript:
+            f.write(f"- [{entry['start']}] {entry['text']}\n")
+    return md_path
+
+# ----------------------------
 # LOAD CUSTOM SECTIONS
 # ----------------------------
 def load_sections(sections_path, transcript):
@@ -99,6 +162,18 @@ def auto_generate_sections(transcript, interval):
             last_time += interval
     print(f"ℹ️ No .sections file found → auto-generated {len(sections)} sections.")
     return sections
+
+
+# ----------------------------
+# SAVE SECTIONS
+# ----------------------------
+def save_sections(sections, sections_path):
+    """Persist ``sections`` to ``sections_path``."""
+
+    with open(sections_path, "w", encoding="utf-8") as f:
+        for sec in sections:
+            f.write(f"{sec['start']} = {sec['title']}\n")
+    print(f"📝 Saved auto-generated sections: {sections_path}")
 
 # ----------------------------
 # GENERATE HTML PLAYER
@@ -201,16 +276,28 @@ def main():
     video_src = args.video_url if is_url else Path(args.video)
 
     # Subtitle handling
-    if not args.subtitles:
-        parser.error("When using --video-url, please provide --subtitles pointing to a matching .srt")
-    srt_path = Path(args.subtitles)
-    transcript = parse_srt(srt_path)
+    if args.subtitles:
+        srt_path = Path(args.subtitles)
+        transcript = parse_srt(srt_path)
+    else:
+        if is_url:
+            parser.error(
+                "When using --video-url without subtitles, auto-transcription is not supported"
+            )
+        srt_path = output_dir / f"{Path(video_src).stem}.srt"
+        transcript = transcribe_to_srt(video_src, srt_path)
+
+    # Always emit a Markdown transcript alongside the subtitles
+    md_path = srt_path.with_suffix(".md")
+    generate_markdown(transcript, md_path)
+    print(f"📄 Markdown transcript: {md_path}")
 
     # Load custom sections if available
     sections_path = srt_path.with_suffix(".sections")
     sections = load_sections(sections_path, transcript)
     if not sections:
         sections = auto_generate_sections(transcript, args.interval)
+        save_sections(sections, sections_path)
 
     # Generate SCORM player
     html_file = generate_player_html(transcript, sections, args.title, output_dir, video_src, is_url)
