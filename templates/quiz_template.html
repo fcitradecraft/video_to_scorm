@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>{{TITLE}}</title>
+  <link rel="stylesheet" href="branding.css" />
+  <script>
+    function submitQuiz() {
+      const answer = document.querySelector('input[name="answer"]:checked');
+      if (!answer) {
+        alert('Please select an option.');
+        return;
+      }
+      const score = answer.value === 'correct' ? 100 : 0;
+      try {
+        if (window.parent && window.parent.API) {
+          const API = window.parent.API;
+          API.LMSInitialize('');
+          API.LMSSetValue('cmi.core.score.raw', score.toString());
+          API.LMSSetValue('cmi.core.lesson_status', score === 100 ? 'passed' : 'failed');
+          API.LMSCommit('');
+          API.LMSFinish('');
+        }
+      } catch (e) {
+        // SCORM API not available
+      }
+      alert('Your score: ' + score);
+    }
+  </script>
+</head>
+<body>
+  <h1>{{QUESTION}}</h1>
+  <form>
+    {{OPTIONS}}
+  </form>
+  <button type="button" onclick="submitQuiz()">Submit</button>
+</body>
+</html>
