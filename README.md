@@ -9,7 +9,9 @@ Generate a simple SCORM package from a video and accompanying subtitles.
 - If no `.srt` is provided for a local video, the script transcribes the video
   using [Whisper](https://github.com/openai/whisper) and saves both `.srt` and
   Markdown transcripts.
-
+codex/transcribe-video-to-.srt-and-markdown-4h43cq
+- Emits a companion `.sections` file with generic section titles based on a
+  configurable interval.
 ## Usage
 ```bash
 python video_to_scorm.py --video path/to/video.mp4 --output output_dir
@@ -19,5 +21,7 @@ Optional arguments:
 - `--subtitles path/to/subtitles.srt` – use an existing subtitle file.
 - `--video-url URL` – use a remote video instead of a local file (requires subtitles).
 - `--title "Lesson Title"` – override the default lesson title.
+codex/transcribe-video-to-.srt-and-markdown-4h43cq
+- `--interval SECONDS` – interval in seconds for auto-generated sections (default 300).
 
 The output directory will contain the SCORM package and any generated transcripts.

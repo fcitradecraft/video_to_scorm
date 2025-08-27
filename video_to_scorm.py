@@ -163,6 +163,18 @@ def auto_generate_sections(transcript, interval):
     print(f"ℹ️ No .sections file found → auto-generated {len(sections)} sections.")
     return sections
 
+
+# ----------------------------
+# SAVE SECTIONS
+# ----------------------------
+def save_sections(sections, sections_path):
+    """Persist ``sections`` to ``sections_path``."""
+
+    with open(sections_path, "w", encoding="utf-8") as f:
+        for sec in sections:
+            f.write(f"{sec['start']} = {sec['title']}\n")
+    print(f"📝 Saved auto-generated sections: {sections_path}")
+
 # ----------------------------
 # GENERATE HTML PLAYER
 # ----------------------------
@@ -285,6 +297,7 @@ def main():
     sections = load_sections(sections_path, transcript)
     if not sections:
         sections = auto_generate_sections(transcript, args.interval)
+        save_sections(sections, sections_path)
 
     # Generate SCORM player
     html_file = generate_player_html(transcript, sections, args.title, output_dir, video_src, is_url)
