@@ -14,7 +14,9 @@ except ImportError:  # pragma: no cover - dependency may be missing
 
 TEMPLATE_PATH = Path(__file__).parent / "templates" / "player_template.html"
 BRANDING_PATH = Path(__file__).parent / "templates" / "branding.css"
-QUIZ_TEMPLATE_PATH = Path(__file__).parent / "templates" / "quiz_template.html"
+
+# Name of the auto-generated quiz file
+QUIZ_JSON_NAME = "quiz.json"
 
 # ----------------------------
 # PARSE SRT
@@ -206,93 +208,74 @@ def generate_player_html(transcript, sections, title, output_dir, video_src, is_
 # ----------------------------
 # QUIZ GENERATION
 # ----------------------------
-def parse_quiz_markdown(md_path, sections):
-    """Parse ``md_path`` for quiz definitions per section.
+def generate_quiz_json(md_path, output_dir, limit=5):
+    """Create a quiz JSON file from ``md_path`` transcript.
 
-    Expects a simple format:
-    ## Section Title
-    Q: Question text
-    - Correct option
-    - Incorrect option
-    (blank line or next heading ends the quiz block)
+    The quiz contains a mixture of multiple choice and true/false questions
+    derived from the transcript text. The resulting JSON file is saved in
+    ``output_dir`` with the name defined by ``QUIZ_JSON_NAME``.
     """
 
     with open(md_path, "r", encoding="utf-8") as f:
-        lines = [line.rstrip() for line in f]
+        lines = [line.strip() for line in f if line.strip().startswith("-")]
 
-    quizzes = []
-    for sec in sections:
-        heading = f"## {sec['title']}"
-        if heading not in lines:
-            continue
-        start = lines.index(heading) + 1
-        question = None
-        options = []
-        for line in lines[start:]:
-            if line.startswith("## "):
-                break
-            if line.startswith("Q:") or line.startswith("Question:"):
-                question = line.split(":", 1)[1].strip()
-            elif line.startswith("- "):
-                options.append(line[2:].strip())
-            elif line.strip() == "":
-                if question and options:
-                    break
-        if question and options:
-            quizzes.append({
-                "section": sec["title"],
-                "question": question,
+    questions = []
+    for line in lines[:limit]:
+        # Extract the text after the timestamp portion
+        if "]" in line:
+            text = line.split("]", 1)[1].strip()
+        else:
+            text = line[1:].strip()
+
+        words = text.split()
+        if len(words) > 5:
+            # Multiple choice: blank out the third word
+            idx = min(2, len(words) - 1)
+            answer = words[idx]
+            prompt_words = words.copy()
+            prompt_words[idx] = "____"
+            prompt = "Fill in the blank: " + " ".join(prompt_words)
+            distractors = [w for w in words if w.lower() != answer.lower()]
+            options = [answer]
+            for d in distractors[:3]:
+                if d not in options:
+                    options.append(d)
+            question = {
+                "type": "multiple_choice",
+                "prompt": prompt,
                 "options": options,
-            })
-    return quizzes
+                "answer": answer,
+            }
+        else:
+            # True/False question
+            question = {
+                "type": "true_false",
+                "prompt": f"True or False: {text}",
+                "answer": True,
+            }
+        questions.append(question)
 
-
-def generate_quizzes(md_path, sections, output_dir):
-    quizzes = parse_quiz_markdown(md_path, sections)
-    generated = []
-    for idx, quiz in enumerate(quizzes, start=1):
-        with open(QUIZ_TEMPLATE_PATH, "r", encoding="utf-8") as f:
-            template = f.read()
-
-        options_html = []
-        for i, opt in enumerate(quiz["options"]):
-            value = "correct" if i == 0 else "incorrect"
-            options_html.append(
-                f'<label><input type="radio" name="answer" value="{value}"> {opt}</label><br/>'
-            )
-
-        quiz_html = template
-        quiz_html = quiz_html.replace("{{TITLE}}", f"Quiz: {quiz['section']}")
-        quiz_html = quiz_html.replace("{{QUESTION}}", quiz["question"])
-        quiz_html = quiz_html.replace("{{OPTIONS}}", "\n".join(options_html))
-
-        quiz_filename = f"quiz_section{idx}.html"
-        quiz_path = output_dir / quiz_filename
-        with open(quiz_path, "w", encoding="utf-8") as f:
-            f.write(quiz_html)
-
-        generated.append({"file": quiz_filename, "title": f"Quiz: {quiz['section']}"})
-
-    return generated
+    quiz_data = {"questions": questions}
+    quiz_path = output_dir / QUIZ_JSON_NAME
+    with open(quiz_path, "w", encoding="utf-8") as f:
+        json.dump(quiz_data, f, indent=2)
+    return quiz_path
 
 # ----------------------------
 # GENERATE SCORM MANIFEST
 # ----------------------------
-def generate_manifest(title, output_dir, quizzes=None):
-    quizzes = quizzes or []
-
+def generate_manifest(title, output_dir, quiz_json=None):
     quiz_items = ""
     quiz_resources = ""
-    for idx, q in enumerate(quizzes, start=1):
-        quiz_items += (
-            f"      <item identifier=\"QUIZ{idx}\" identifierref=\"RESQ{idx}\">\n"
-            f"        <title>{q['title']}</title>\n"
+    if quiz_json:
+        quiz_items = (
+            "      <item identifier=\"QUIZ1\" identifierref=\"RESQ1\">\n"
+            "        <title>Quiz</title>\n"
             "      </item>\n"
         )
-        quiz_resources += (
-            f"    <resource identifier=\"RESQ{idx}\" type=\"webcontent\" adlcp:scormtype=\"sco\" href=\"{q['file']}\">\n"
-            f"      <file href=\"{q['file']}\" />\n"
-            f"      <file href=\"{BRANDING_PATH.name}\" />\n"
+        quiz_resources = (
+            f"    <resource identifier=\"RESQ1\" type=\"webcontent\" adlcp:scormtype=\"asset\" href=\"{QUIZ_JSON_NAME}\">\n"
+            f"      <file href=\"{QUIZ_JSON_NAME}\" />\n"
             "    </resource>\n"
         )
 
@@ -375,6 +358,20 @@ def prepare_assets(video, output, interval=300, subtitles=None):
     print("✅ Preparation complete. You may edit the Markdown file to add quiz questions before packaging.")
 
 
+def prepare_quiz(input_dir, num_questions=5):
+    """Generate ``quiz.json`` from the Markdown transcript in ``input_dir``."""
+
+    output_dir = Path(input_dir)
+    md_files = list(output_dir.glob("*.md"))
+    if not md_files:
+        raise FileNotFoundError("No markdown transcript found in input directory")
+
+    md_path = md_files[0]
+    quiz_path = generate_quiz_json(md_path, output_dir, num_questions)
+    print(f"📄 Quiz file: {quiz_path}")
+    print("✅ Quiz generation complete. Proceed to the package stage to include it in the SCORM zip.")
+
+
 def package_scorm(video_url, input_dir, title="SCORM Lesson"):
     output_dir = Path(input_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -394,17 +391,22 @@ def package_scorm(video_url, input_dir, title="SCORM Lesson"):
         sections = auto_generate_sections(transcript, 300)
         save_sections(sections, sections_path)
 
-    quizzes = []
-    if md_path.exists():
-        quizzes = generate_quizzes(md_path, sections, output_dir)
+    quiz_json = None
+    quiz_path = output_dir / QUIZ_JSON_NAME
+    if quiz_path.exists():
+        quiz_json = quiz_path
 
     html_file = generate_player_html(transcript, sections, title, output_dir, video_url, True)
-    manifest_file = generate_manifest(title, output_dir, quizzes)
+    manifest_file = generate_manifest(title, output_dir, quiz_json)
     zip_file = create_scorm_package(output_dir, title)
 
     print(f"\n✅ Generated SCORM player: {html_file}")
     print(f"✅ SCORM manifest: {manifest_file}")
     print(f"✅ SCORM package: {zip_file}")
+    if quiz_json:
+        print(f"ℹ️ Included quiz file: {quiz_json}")
+    else:
+        print("⚠️ No quiz.json found. Run the 'quiz' stage to generate one if desired.")
 
 # ----------------------------
 # MAIN ENTRYPOINT
@@ -422,6 +424,13 @@ def main():
     prep.add_argument(
         "--interval", type=int, default=300, help="Auto-section interval in seconds"
     )
+    quiz_cmd = subparsers.add_parser(
+        "quiz", help="Generate quiz.json from the markdown transcript"
+    )
+    quiz_cmd.add_argument("--input", required=True, help="Folder with prepared assets")
+    quiz_cmd.add_argument(
+        "--num-questions", type=int, default=5, help="Number of questions to generate"
+    )
 
     pack = subparsers.add_parser(
         "package", help="Create SCORM package using prepared assets and a video URL"
@@ -434,6 +443,8 @@ def main():
 
     if args.command == "prepare":
         prepare_assets(args.video, args.output, args.interval, args.subtitles)
+    elif args.command == "quiz":
+        prepare_quiz(args.input, args.num_questions)
     elif args.command == "package":
         package_scorm(args.video_url, args.input, args.title)
 
