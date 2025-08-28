@@ -14,6 +14,7 @@ except ImportError:  # pragma: no cover - dependency may be missing
 
 TEMPLATE_PATH = Path(__file__).parent / "templates" / "player_template.html"
 BRANDING_PATH = Path(__file__).parent / "templates" / "branding.css"
+QUIZ_TEMPLATE_PATH = Path(__file__).parent / "templates" / "quiz_template.html"
 
 # ----------------------------
 # PARSE SRT
@@ -193,15 +194,108 @@ def generate_player_html(transcript, sections, title, output_dir, video_src, is_
     if not is_url:
         shutil.copy(video_src, output_dir / video_src.name)
 
+    # Ensure branding stylesheet is available in the output folder
+    shutil.copy(BRANDING_PATH, output_dir / BRANDING_PATH.name)
+
     output_html = output_dir / "index.html"
     with open(output_html, "w", encoding="utf-8") as out:
         out.write(output_text)
     return output_html
 
+
+# ----------------------------
+# QUIZ GENERATION
+# ----------------------------
+def parse_quiz_markdown(md_path, sections):
+    """Parse ``md_path`` for quiz definitions per section.
+
+    Expects a simple format:
+    ## Section Title
+    Q: Question text
+    - Correct option
+    - Incorrect option
+    (blank line or next heading ends the quiz block)
+    """
+
+    with open(md_path, "r", encoding="utf-8") as f:
+        lines = [line.rstrip() for line in f]
+
+    quizzes = []
+    for sec in sections:
+        heading = f"## {sec['title']}"
+        if heading not in lines:
+            continue
+        start = lines.index(heading) + 1
+        question = None
+        options = []
+        for line in lines[start:]:
+            if line.startswith("## "):
+                break
+            if line.startswith("Q:") or line.startswith("Question:"):
+                question = line.split(":", 1)[1].strip()
+            elif line.startswith("- "):
+                options.append(line[2:].strip())
+            elif line.strip() == "":
+                if question and options:
+                    break
+        if question and options:
+            quizzes.append({
+                "section": sec["title"],
+                "question": question,
+                "options": options,
+            })
+    return quizzes
+
+
+def generate_quizzes(md_path, sections, output_dir):
+    quizzes = parse_quiz_markdown(md_path, sections)
+    generated = []
+    for idx, quiz in enumerate(quizzes, start=1):
+        with open(QUIZ_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+            template = f.read()
+
+        options_html = []
+        for i, opt in enumerate(quiz["options"]):
+            value = "correct" if i == 0 else "incorrect"
+            options_html.append(
+                f'<label><input type="radio" name="answer" value="{value}"> {opt}</label><br/>'
+            )
+
+        quiz_html = template
+        quiz_html = quiz_html.replace("{{TITLE}}", f"Quiz: {quiz['section']}")
+        quiz_html = quiz_html.replace("{{QUESTION}}", quiz["question"])
+        quiz_html = quiz_html.replace("{{OPTIONS}}", "\n".join(options_html))
+
+        quiz_filename = f"quiz_section{idx}.html"
+        quiz_path = output_dir / quiz_filename
+        with open(quiz_path, "w", encoding="utf-8") as f:
+            f.write(quiz_html)
+
+        generated.append({"file": quiz_filename, "title": f"Quiz: {quiz['section']}"})
+
+    return generated
+
 # ----------------------------
 # GENERATE SCORM MANIFEST
 # ----------------------------
-def generate_manifest(title, output_dir):
+def generate_manifest(title, output_dir, quizzes=None):
+    quizzes = quizzes or []
+
+    quiz_items = ""
+    quiz_resources = ""
+    for idx, q in enumerate(quizzes, start=1):
+        quiz_items += (
+            f"      <item identifier=\"QUIZ{idx}\" identifierref=\"RESQ{idx}\">\n"
+            f"        <title>{q['title']}</title>\n"
+            "      </item>\n"
+        )
+        quiz_resources += (
+            f"    <resource identifier=\"RESQ{idx}\" type=\"webcontent\" adlcp:scormtype=\"sco\" href=\"{q['file']}\">\n"
+            f"      <file href=\"{q['file']}\" />\n"
+            f"      <file href=\"{BRANDING_PATH.name}\" />\n"
+            "    </resource>\n"
+        )
+
     manifest = f"""<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="{title.replace(' ', '_').upper()}_SCORM" version="1.0"
  xmlns="http://www.imsproject.org/xsd/imscp_rootv1p1p2"
@@ -222,14 +316,14 @@ def generate_manifest(title, output_dir):
       <item identifier="ITEM1" identifierref="RES1">
         <title>{title}</title>
       </item>
-    </organization>
+{quiz_items}    </organization>
   </organizations>
   <resources>
     <resource identifier="RES1" type="webcontent" adlcp:scormtype="sco" href="index.html">
       <file href="index.html" />
       <file href="{BRANDING_PATH.name}" />
     </resource>
-  </resources>
+{quiz_resources}  </resources>
 </manifest>"""
     manifest_path = output_dir / "imsmanifest.xml"
     with open(manifest_path, "w", encoding="utf-8") as f:
@@ -252,72 +346,97 @@ def create_scorm_package(output_dir, title):
     return zip_path
 
 # ----------------------------
-# MAIN ENTRYPOINT
+# PREPARE AND PACKAGE HELPERS
 # ----------------------------
-def main():
-    parser = argparse.ArgumentParser(description="Generate SCORM lesson")
-    parser.add_argument("--video", help="Path to local video file (optional)")
-    parser.add_argument("--video-url", help="Optional: external video URL (YouTube, Vimeo, etc.)")
-    parser.add_argument("--subtitles", help="Path to existing .srt file")
-    parser.add_argument("--output", required=True, help="Output folder")
-    parser.add_argument("--title", default="SCORM Lesson", help="Lesson title")
-    parser.add_argument("--interval", type=int, default=300, help="Auto-section interval in seconds")
-    args = parser.parse_args()
-
-    # Validate input
-    if not args.video and not args.video_url:
-        parser.error("You must provide either --video or --video-url")
-
-    output_dir = Path(args.output)
+def prepare_assets(video, output, interval=300, subtitles=None):
+    output_dir = Path(output)
     output_dir.mkdir(parents=True, exist_ok=True)
+    video_src = Path(video)
 
-    # Decide video source
-    is_url = bool(args.video_url)
-    video_src = args.video_url if is_url else Path(args.video)
-
-    # Subtitle handling
-    if args.subtitles:
-        srt_src = Path(args.subtitles)
+    if subtitles:
+        srt_src = Path(subtitles)
         transcript = parse_srt(srt_src)
         srt_path = output_dir / srt_src.name
         if srt_src.resolve() != srt_path.resolve():
             shutil.copy(srt_src, srt_path)
-        sections_input_path = srt_src.with_suffix(".sections")
     else:
-        if is_url:
-            parser.error(
-                "When using --video-url without subtitles, auto-transcription is not supported"
-            )
-        srt_path = output_dir / f"{Path(video_src).stem}.srt"
+        srt_path = output_dir / f"{video_src.stem}.srt"
         transcript = transcribe_to_srt(video_src, srt_path)
-        sections_input_path = srt_path.with_suffix(".sections")
 
-    # Always emit a Markdown transcript alongside the subtitles
     md_path = srt_path.with_suffix(".md")
     generate_markdown(transcript, md_path)
     print(f"📄 Markdown transcript: {md_path}")
 
-    # Load custom sections if available and ensure a .sections file in the output dir
+    sections = auto_generate_sections(transcript, interval)
     final_sections_path = output_dir / f"{output_dir.name}.sections"
-    sections = load_sections(sections_input_path, transcript)
-    if sections:
-        if sections_input_path.resolve() != final_sections_path.resolve():
-            shutil.copy(sections_input_path, final_sections_path)
-    else:
-        sections = load_sections(final_sections_path, transcript)
-        if not sections:
-            sections = auto_generate_sections(transcript, args.interval)
-            save_sections(sections, final_sections_path)
+    save_sections(sections, final_sections_path)
     print(f"📄 Sections file: {final_sections_path}")
 
-    # Generate SCORM player
-    html_file = generate_player_html(transcript, sections, args.title, output_dir, video_src, is_url)
-    manifest_file = generate_manifest(args.title, output_dir)
-    zip_file = create_scorm_package(output_dir, args.title)
+    print("✅ Preparation complete. You may edit the Markdown file to add quiz questions before packaging.")
+
+
+def package_scorm(video_url, input_dir, title="SCORM Lesson"):
+    output_dir = Path(input_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Locate necessary files
+    srt_files = list(output_dir.glob("*.srt"))
+    if not srt_files:
+        raise FileNotFoundError("No .srt file found in input directory")
+    srt_path = srt_files[0]
+    transcript = parse_srt(srt_path)
+
+    md_path = srt_path.with_suffix(".md")
+    sections_path = output_dir / f"{output_dir.name}.sections"
+
+    sections = load_sections(sections_path, transcript)
+    if not sections:
+        sections = auto_generate_sections(transcript, 300)
+        save_sections(sections, sections_path)
+
+    quizzes = []
+    if md_path.exists():
+        quizzes = generate_quizzes(md_path, sections, output_dir)
+
+    html_file = generate_player_html(transcript, sections, title, output_dir, video_url, True)
+    manifest_file = generate_manifest(title, output_dir, quizzes)
+    zip_file = create_scorm_package(output_dir, title)
 
     print(f"\n✅ Generated SCORM player: {html_file}")
     print(f"✅ SCORM manifest: {manifest_file}")
     print(f"✅ SCORM package: {zip_file}")
+
+# ----------------------------
+# MAIN ENTRYPOINT
+# ----------------------------
+def main():
+    parser = argparse.ArgumentParser(description="Generate SCORM lesson")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    prep = subparsers.add_parser(
+        "prepare", help="Generate subtitles, markdown, and sections from a local video"
+    )
+    prep.add_argument("--video", required=True, help="Path to local video file")
+    prep.add_argument("--output", required=True, help="Output folder")
+    prep.add_argument("--subtitles", help="Path to existing .srt file")
+    prep.add_argument(
+        "--interval", type=int, default=300, help="Auto-section interval in seconds"
+    )
+
+    pack = subparsers.add_parser(
+        "package", help="Create SCORM package using prepared assets and a video URL"
+    )
+    pack.add_argument("--video-url", required=True, help="External video URL")
+    pack.add_argument("--input", required=True, help="Folder containing prepared assets")
+    pack.add_argument("--title", default="SCORM Lesson", help="Lesson title")
+
+    args = parser.parse_args()
+
+    if args.command == "prepare":
+        prepare_assets(args.video, args.output, args.interval, args.subtitles)
+    elif args.command == "package":
+        package_scorm(args.video_url, args.input, args.title)
+
 
 if __name__ == "__main__":
     main()
