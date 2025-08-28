@@ -293,7 +293,7 @@ def generate_manifest(title, output_dir, include_quiz=False):
     quiz_resources = ""
     if include_quiz:
         quiz_items = (
-            "      <item identifier=\"QUIZ1\" identifierref=\"RESQ1\" adlcp:prerequisites=\"ITEM1\">\n"
+            "      <item identifier=\"QUIZ1\" identifierref=\"RESQ1\">\n"
             "        <title>Quiz</title>\n"
             "      </item>\n"
         )
