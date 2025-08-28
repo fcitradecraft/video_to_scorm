@@ -5,24 +5,22 @@
   <title>{{TITLE}}</title>
   <link rel="stylesheet" href="branding.css" />
   <script>
-    let quizData = [];
+    let quizData = {{QUIZ_DATA}}.questions || [];
     let current = 0;
     let score = 0;
+    let API = null;
 
-    function loadQuiz() {
-      fetch('quiz.json')
-        .then(res => res.json())
-        .then(data => {
-          quizData = data.questions || [];
-          if (quizData.length === 0) {
-            document.getElementById('quiz-container').innerText = 'No quiz available.';
-            return;
-          }
-          showQuestion();
-        })
-        .catch(() => {
-          document.getElementById('quiz-container').innerText = 'Unable to load quiz.';
-        });
+    function initScorm() {
+      try {
+        if (window.API) {
+          API = window.API;
+        } else if (window.parent && window.parent.API) {
+          API = window.parent.API;
+        }
+        if (API) {
+          API.LMSInitialize('');
+        }
+      } catch (e) {}
     }
 
     function showQuestion() {
@@ -63,10 +61,10 @@
     function finishQuiz() {
       const percent = Math.round((score / quizData.length) * 100);
       try {
-        if (window.parent && window.parent.API) {
-          const API = window.parent.API;
-          API.LMSInitialize('');
+        if (API) {
           API.LMSSetValue('cmi.core.score.raw', percent.toString());
+          API.LMSSetValue('cmi.core.score.max', '100');
+          API.LMSSetValue('cmi.core.score.min', '0');
           API.LMSSetValue('cmi.core.lesson_status', percent >= 80 ? 'passed' : 'failed');
           API.LMSCommit('');
           API.LMSFinish('');
@@ -75,7 +73,14 @@
       document.getElementById('quiz-container').innerHTML = `<p>Your score: ${percent}</p>`;
     }
 
-    window.addEventListener('load', loadQuiz);
+    window.addEventListener('load', () => {
+      initScorm();
+      if (quizData.length === 0) {
+        document.getElementById('quiz-container').innerText = 'No quiz available.';
+        return;
+      }
+      showQuestion();
+    });
   </script>
 </head>
 <body>

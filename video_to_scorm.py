@@ -213,12 +213,25 @@ def generate_player_html(transcript, sections, title, output_dir, video_src, is_
 # QUIZ HTML RENDERING
 # ----------------------------
 def generate_quiz_html(output_dir, title):
-    """Render the quiz player page into ``output_dir``."""
+    """Render the quiz player page into ``output_dir``.
+
+    The quiz JSON is inlined into the HTML so the page can be opened
+    directly from disk without triggering browser security errors.
+    """
 
     with open(QUIZ_TEMPLATE_PATH, "r", encoding="utf-8") as f:
         template = f.read()
 
-    html = template.replace("{{TITLE}}", title)
+    quiz_json_path = output_dir / QUIZ_JSON_NAME
+    quiz_data = "{}"
+    if quiz_json_path.exists():
+        with open(quiz_json_path, "r", encoding="utf-8") as qf:
+            quiz_data = qf.read()
+
+    html = (
+        template.replace("{{TITLE}}", title)
+        .replace("{{QUIZ_DATA}}", quiz_data)
+    )
 
     # Ensure branding stylesheet is available in the output folder
     shutil.copy(BRANDING_PATH, output_dir / BRANDING_PATH.name)
@@ -295,6 +308,7 @@ def generate_manifest(title, output_dir, include_quiz=False):
         quiz_items = (
             "      <item identifier=\"QUIZ1\" identifierref=\"RESQ1\">\n"
             "        <title>Quiz</title>\n"
+            "        <adlcp:masteryscore>80</adlcp:masteryscore>\n"
             "      </item>\n"
         )
         quiz_resources = (
