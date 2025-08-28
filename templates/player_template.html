@@ -11,7 +11,7 @@
     #video-container {
       width: 100%;
       max-width: 960px;
-      margin: 0 auto 20px;
+      margin-bottom: 20px;
       position: relative;
       padding-bottom: 56.25%;
       height: 0;
@@ -35,18 +35,6 @@
       color: #333;
     }
 
-    header {
-      background-color: #0d1b2a;
-      color: white;
-      padding: 20px;
-      text-align: center;
-    }
-
-    #lesson-title {
-      margin: 0;
-      font-size: 1.5rem;
-    }
-
     main {
       display: flex;
       flex-direction: row;
@@ -54,6 +42,13 @@
       max-width: 1200px;
       margin: 20px auto;
       padding: 0 15px;
+    }
+
+    #content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
     }
 
     /* Sidebar styling */
@@ -120,26 +115,13 @@
         order: 2;
         margin-top: 15px;
       }
-      #transcript-container {
+      #content {
         order: 1;
       }
     }
   </style>
 </head>
 <body>
-<header>
-  <h1 id="lesson-title">{{TITLE}}</h1>
-</header>
-
-<!-- Video Player -->
-<div id="video-container">
-  <!-- If local video -->
-  <video id="lesson-video" controls>
-    <source src="{{VIDEO}}" type="video/mp4" />
-    Your browser does not support HTML5 video.
-  </video>
-</div>
-
 <main>
   <!-- Sidebar Navigation -->
   <div id="sidebar">
@@ -147,11 +129,22 @@
     <ul id="section-list"></ul>
   </div>
 
-  <!-- Transcript -->
-  <div id="transcript-container">
-    <table id="transcript-table">
-      <tbody></tbody>
-    </table>
+  <div id="content">
+    <!-- Video Player -->
+    <div id="video-container">
+      <!-- If local video -->
+      <video id="lesson-video" controls>
+        <source src="{{VIDEO}}" type="video/mp4" />
+        Your browser does not support HTML5 video.
+      </video>
+    </div>
+
+    <!-- Transcript -->
+    <div id="transcript-container">
+      <table id="transcript-table">
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 </main>
 
