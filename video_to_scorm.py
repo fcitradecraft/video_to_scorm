@@ -14,6 +14,10 @@ except ImportError:  # pragma: no cover - dependency may be missing
 
 TEMPLATE_PATH = Path(__file__).parent / "templates" / "player_template.html"
 BRANDING_PATH = Path(__file__).parent / "templates" / "branding.css"
+QUIZ_TEMPLATE_PATH = Path(__file__).parent / "templates" / "quiz_template.html"
+
+# Output HTML name for the rendered quiz page
+QUIZ_HTML_NAME = "quiz.html"
 
 # Name of the auto-generated quiz file
 QUIZ_JSON_NAME = "quiz.json"
@@ -206,6 +210,39 @@ def generate_player_html(transcript, sections, title, output_dir, video_src, is_
 
 
 # ----------------------------
+# QUIZ HTML RENDERING
+# ----------------------------
+def generate_quiz_html(output_dir, title):
+    """Render the quiz player page into ``output_dir``.
+
+    The quiz JSON is inlined into the HTML so the page can be opened
+    directly from disk without triggering browser security errors.
+    """
+
+    with open(QUIZ_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+        template = f.read()
+
+    quiz_json_path = output_dir / QUIZ_JSON_NAME
+    quiz_data = "{}"
+    if quiz_json_path.exists():
+        with open(quiz_json_path, "r", encoding="utf-8") as qf:
+            quiz_data = qf.read()
+
+    html = (
+        template.replace("{{TITLE}}", title)
+        .replace("{{QUIZ_DATA}}", quiz_data)
+    )
+
+    # Ensure branding stylesheet is available in the output folder
+    shutil.copy(BRANDING_PATH, output_dir / BRANDING_PATH.name)
+
+    quiz_html = output_dir / QUIZ_HTML_NAME
+    with open(quiz_html, "w", encoding="utf-8") as out:
+        out.write(html)
+    return quiz_html
+
+
+# ----------------------------
 # QUIZ GENERATION
 # ----------------------------
 def generate_quiz_json(md_path, output_dir, limit=5):
@@ -264,18 +301,21 @@ def generate_quiz_json(md_path, output_dir, limit=5):
 # ----------------------------
 # GENERATE SCORM MANIFEST
 # ----------------------------
-def generate_manifest(title, output_dir, quiz_json=None):
+def generate_manifest(title, output_dir, include_quiz=False):
     quiz_items = ""
     quiz_resources = ""
-    if quiz_json:
+    if include_quiz:
         quiz_items = (
             "      <item identifier=\"QUIZ1\" identifierref=\"RESQ1\">\n"
             "        <title>Quiz</title>\n"
+            "        <adlcp:masteryscore>80</adlcp:masteryscore>\n"
             "      </item>\n"
         )
         quiz_resources = (
-            f"    <resource identifier=\"RESQ1\" type=\"webcontent\" adlcp:scormtype=\"asset\" href=\"{QUIZ_JSON_NAME}\">\n"
+            f"    <resource identifier=\"RESQ1\" type=\"webcontent\" adlcp:scormtype=\"sco\" href=\"{QUIZ_HTML_NAME}\">\n"
+            f"      <file href=\"{QUIZ_HTML_NAME}\" />\n"
             f"      <file href=\"{QUIZ_JSON_NAME}\" />\n"
+            f"      <file href=\"{BRANDING_PATH.name}\" />\n"
             "    </resource>\n"
         )
 
@@ -391,20 +431,21 @@ def package_scorm(video_url, input_dir, title="SCORM Lesson"):
         sections = auto_generate_sections(transcript, 300)
         save_sections(sections, sections_path)
 
-    quiz_json = None
     quiz_path = output_dir / QUIZ_JSON_NAME
+    include_quiz = False
     if quiz_path.exists():
-        quiz_json = quiz_path
+        include_quiz = True
+        generate_quiz_html(output_dir, title)
 
     html_file = generate_player_html(transcript, sections, title, output_dir, video_url, True)
-    manifest_file = generate_manifest(title, output_dir, quiz_json)
+    manifest_file = generate_manifest(title, output_dir, include_quiz)
     zip_file = create_scorm_package(output_dir, title)
 
     print(f"\n✅ Generated SCORM player: {html_file}")
     print(f"✅ SCORM manifest: {manifest_file}")
     print(f"✅ SCORM package: {zip_file}")
-    if quiz_json:
-        print(f"ℹ️ Included quiz file: {quiz_json}")
+    if include_quiz:
+        print(f"ℹ️ Included quiz file: {quiz_path}")
     else:
         print("⚠️ No quiz.json found. Run the 'quiz' stage to generate one if desired.")
 
