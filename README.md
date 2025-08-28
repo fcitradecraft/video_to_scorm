@@ -11,16 +11,21 @@ Generate a simple SCORM package from a video and accompanying subtitles.
   Markdown transcripts.
 - Emits a companion `.sections` file in the output directory (named after the
   output folder) with generic section titles based on a configurable interval.
+- Optional third stage generates a quiz in `quiz.json` based on the markdown
+  transcript. Questions are auto-invented as multiple choice or true/false.
 ## Usage
+### Workflow
+
 ```bash
-python video_to_scorm.py --video path/to/video.mp4 --output output_dir
+# Stage 1 – generate transcripts and sections
+python video_to_scorm.py prepare --video path/to/video.mp4 --output output_dir
+
+# Stage 2 – create quiz.json from the markdown transcript
+python video_to_scorm.py quiz --input output_dir
+
+# Stage 3 – build the final SCORM package with the external video URL
+python video_to_scorm.py package --video-url URL --input output_dir --title "Lesson Title"
 ```
 
-Optional arguments:
-- `--subtitles path/to/subtitles.srt` – use an existing subtitle file.
-- `--video-url URL` – use a remote video instead of a local file (requires subtitles).
-- `--title "Lesson Title"` – override the default lesson title.
-- `--interval SECONDS` – interval in seconds for auto-generated sections (default 300).
-
-The output directory will contain the SCORM package plus the `.srt`, `.md`, and
-`.sections` files.
+The output directory will contain the `.srt`, `.md`, `.sections`, and `quiz.json`
+files. The `package` stage includes `quiz.json` in the final `*_SCORM.zip`.
