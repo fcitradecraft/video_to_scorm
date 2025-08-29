@@ -10,8 +10,7 @@
     /* Video container */
     #video-container {
       width: 100%;
-      max-width: 960px;
-      margin: 0 auto 20px;
+      margin-bottom: 20px;
       position: relative;
       padding-bottom: 56.25%;
       height: 0;
@@ -35,30 +34,25 @@
       color: #333;
     }
 
-    header {
-      background-color: #0d1b2a;
-      color: white;
-      padding: 20px;
-      text-align: center;
-    }
-
-    #lesson-title {
-      margin: 0;
-      font-size: 1.5rem;
-    }
-
     main {
       display: flex;
       flex-direction: row;
+      align-items: flex-start;
       gap: 20px;
-      max-width: 1200px;
-      margin: 20px auto;
+      margin: 20px;
       padding: 0 15px;
+    }
+
+    #content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
     }
 
     /* Sidebar styling */
     #sidebar {
-      width: 250px;
+      width: 200px;
       background: #f7f7f7;
       border-right: 1px solid #ddd;
       padding: 15px;
@@ -120,26 +114,13 @@
         order: 2;
         margin-top: 15px;
       }
-      #transcript-container {
+      #content {
         order: 1;
       }
     }
   </style>
 </head>
 <body>
-<header>
-  <h1 id="lesson-title">{{TITLE}}</h1>
-</header>
-
-<!-- Video Player -->
-<div id="video-container">
-  <!-- If local video -->
-  <video id="lesson-video" controls>
-    <source src="{{VIDEO}}" type="video/mp4" />
-    Your browser does not support HTML5 video.
-  </video>
-</div>
-
 <main>
   <!-- Sidebar Navigation -->
   <div id="sidebar">
@@ -147,11 +128,22 @@
     <ul id="section-list"></ul>
   </div>
 
-  <!-- Transcript -->
-  <div id="transcript-container">
-    <table id="transcript-table">
-      <tbody></tbody>
-    </table>
+  <div id="content">
+    <!-- Video Player -->
+    <div id="video-container">
+      <!-- If local video -->
+      <video id="lesson-video" controls>
+        <source src="{{VIDEO}}" type="video/mp4" />
+        Your browser does not support HTML5 video.
+      </video>
+    </div>
+
+    <!-- Transcript -->
+    <div id="transcript-container">
+      <table id="transcript-table">
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 </main>
 
@@ -165,6 +157,30 @@
   let videoPlayer = null;
   let youtubePlayer = null;
   let isYouTube = false;
+  let API = null;
+
+  function initScorm() {
+    try {
+      if (window.API) {
+        API = window.API;
+      } else if (window.parent && window.parent.API) {
+        API = window.parent.API;
+      }
+      if (API) {
+        API.LMSInitialize('');
+      }
+    } catch (e) {}
+  }
+
+  function completeScorm() {
+    try {
+      if (API) {
+        API.LMSSetValue('cmi.core.lesson_status', 'completed');
+        API.LMSCommit('');
+        API.LMSFinish('');
+      }
+    } catch (e) {}
+  }
 
   // Detect YouTube vs local MP4
   if (videoUrl.includes("youtube.com") || videoUrl.includes("youtu.be")) {
@@ -235,6 +251,7 @@
     videoPlayer.addEventListener("timeupdate", () => {
       highlightTranscript(videoPlayer.currentTime);
     });
+    videoPlayer.addEventListener('ended', completeScorm);
   }
 
   // If YouTube video → setup YouTube Iframe API
@@ -246,7 +263,10 @@
     window.onYouTubeIframeAPIReady = () => {
       youtubePlayer = new YT.Player("youtube-player", {
         events: {
-          onStateChange: () => {
+          onStateChange: (event) => {
+            if (event.data === YT.PlayerState.ENDED) {
+              completeScorm();
+            }
             setInterval(() => {
               if (youtubePlayer && youtubePlayer.getCurrentTime) {
                 highlightTranscript(youtubePlayer.getCurrentTime());
@@ -257,6 +277,8 @@
       });
     };
   }
+
+  window.addEventListener('load', initScorm);
 </script>
 </body>
 </html>

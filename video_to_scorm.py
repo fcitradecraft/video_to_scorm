@@ -14,6 +14,13 @@ except ImportError:  # pragma: no cover - dependency may be missing
 
 TEMPLATE_PATH = Path(__file__).parent / "templates" / "player_template.html"
 BRANDING_PATH = Path(__file__).parent / "templates" / "branding.css"
+QUIZ_TEMPLATE_PATH = Path(__file__).parent / "templates" / "quiz_template.html"
+
+# Output HTML name for the rendered quiz page
+QUIZ_HTML_NAME = "quiz.html"
+
+# Name of the auto-generated quiz file
+QUIZ_JSON_NAME = "quiz.json"
 
 # ----------------------------
 # PARSE SRT
@@ -46,6 +53,69 @@ def time_to_seconds(time_str):
     h, m, s_ms = time_str.split(":")
     s, ms = s_ms.split(",")
     return int(h) * 3600 + int(m) * 60 + int(s)
+
+# ----------------------------
+# TIMESTAMP HELPERS
+# ----------------------------
+def seconds_to_timestamp(seconds):
+    """Convert float seconds to SRT timestamp."""
+    td = timedelta(seconds=seconds)
+    total_seconds = int(td.total_seconds())
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    secs = total_seconds % 60
+    milliseconds = int(round((seconds - total_seconds) * 1000))
+    return f"{hours:02}:{minutes:02}:{secs:02},{milliseconds:03}"
+
+
+# ----------------------------
+# TRANSCRIBE VIDEO
+# ----------------------------
+def transcribe_to_srt(video_path, srt_path):
+    """Transcribe ``video_path`` using Whisper and save as ``srt_path``.
+
+    Returns the transcript structure compatible with ``parse_srt``.
+    """
+
+    if whisper is None:  # pragma: no cover - optional dependency
+        raise RuntimeError("Whisper is required for auto-transcription but is not installed")
+
+    print("🎤 No .srt provided → transcribing video with Whisper...")
+    model = whisper.load_model("base")
+    result = model.transcribe(str(video_path))
+
+    transcript = []
+    lines = []
+    for i, seg in enumerate(result.get("segments", []), start=1):
+        start = seconds_to_timestamp(seg["start"])
+        end = seconds_to_timestamp(seg["end"])
+        text = seg.get("text", "").strip()
+        lines.append(f"{i}\n{start} --> {end}\n{text}\n")
+        transcript.append({
+            "index": i,
+            "start": start,
+            "end": end,
+            "start_seconds": int(seg["start"]),
+            "text": text,
+        })
+
+    with open(srt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    print(f"📝 Saved auto-generated subtitles: {srt_path}")
+
+    return transcript
+
+
+# ----------------------------
+# GENERATE MARKDOWN TRANSCRIPT
+# ----------------------------
+def generate_markdown(transcript, md_path):
+    """Write ``transcript`` to ``md_path`` in a simple Markdown format."""
+
+    with open(md_path, "w", encoding="utf-8") as f:
+        for entry in transcript:
+            f.write(f"- [{entry['start']}] {entry['text']}\n")
+    return md_path
 
 # ----------------------------
 # LOAD CUSTOM SECTIONS
@@ -100,6 +170,18 @@ def auto_generate_sections(transcript, interval):
     print(f"ℹ️ No .sections file found → auto-generated {len(sections)} sections.")
     return sections
 
+
+# ----------------------------
+# SAVE SECTIONS
+# ----------------------------
+def save_sections(sections, sections_path):
+    """Persist ``sections`` to ``sections_path``."""
+
+    with open(sections_path, "w", encoding="utf-8") as f:
+        for sec in sections:
+            f.write(f"{sec['start']} = {sec['title']}\n")
+    print(f"📝 Saved auto-generated sections: {sections_path}")
+
 # ----------------------------
 # GENERATE HTML PLAYER
 # ----------------------------
@@ -118,15 +200,125 @@ def generate_player_html(transcript, sections, title, output_dir, video_src, is_
     if not is_url:
         shutil.copy(video_src, output_dir / video_src.name)
 
+    # Ensure branding stylesheet is available in the output folder
+    shutil.copy(BRANDING_PATH, output_dir / BRANDING_PATH.name)
+
     output_html = output_dir / "index.html"
     with open(output_html, "w", encoding="utf-8") as out:
         out.write(output_text)
     return output_html
 
+
+# ----------------------------
+# QUIZ HTML RENDERING
+# ----------------------------
+def generate_quiz_html(output_dir, title):
+    """Render the quiz player page into ``output_dir``.
+
+    The quiz JSON is inlined into the HTML so the page can be opened
+    directly from disk without triggering browser security errors.
+    """
+
+    with open(QUIZ_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+        template = f.read()
+
+    quiz_json_path = output_dir / QUIZ_JSON_NAME
+    quiz_data = "{}"
+    if quiz_json_path.exists():
+        with open(quiz_json_path, "r", encoding="utf-8") as qf:
+            quiz_data = qf.read()
+
+    html = (
+        template.replace("{{TITLE}}", title)
+        .replace("{{QUIZ_DATA}}", quiz_data)
+    )
+
+    # Ensure branding stylesheet is available in the output folder
+    shutil.copy(BRANDING_PATH, output_dir / BRANDING_PATH.name)
+
+    quiz_html = output_dir / QUIZ_HTML_NAME
+    with open(quiz_html, "w", encoding="utf-8") as out:
+        out.write(html)
+    return quiz_html
+
+
+# ----------------------------
+# QUIZ GENERATION
+# ----------------------------
+def generate_quiz_json(md_path, output_dir, limit=5):
+    """Create a quiz JSON file from ``md_path`` transcript.
+
+    The quiz contains a mixture of multiple choice and true/false questions
+    derived from the transcript text. The resulting JSON file is saved in
+    ``output_dir`` with the name defined by ``QUIZ_JSON_NAME``.
+    """
+
+    with open(md_path, "r", encoding="utf-8") as f:
+        lines = [line.strip() for line in f if line.strip().startswith("-")]
+
+    questions = []
+    for line in lines[:limit]:
+        # Extract the text after the timestamp portion
+        if "]" in line:
+            text = line.split("]", 1)[1].strip()
+        else:
+            text = line[1:].strip()
+
+        words = text.split()
+        if len(words) > 5:
+            # Multiple choice: blank out the third word
+            idx = min(2, len(words) - 1)
+            answer = words[idx]
+            prompt_words = words.copy()
+            prompt_words[idx] = "____"
+            prompt = "Fill in the blank: " + " ".join(prompt_words)
+            distractors = [w for w in words if w.lower() != answer.lower()]
+            options = [answer]
+            for d in distractors[:3]:
+                if d not in options:
+                    options.append(d)
+            question = {
+                "type": "multiple_choice",
+                "prompt": prompt,
+                "options": options,
+                "answer": answer,
+            }
+        else:
+            # True/False question
+            question = {
+                "type": "true_false",
+                "prompt": f"True or False: {text}",
+                "answer": True,
+            }
+        questions.append(question)
+
+    quiz_data = {"questions": questions}
+    quiz_path = output_dir / QUIZ_JSON_NAME
+    with open(quiz_path, "w", encoding="utf-8") as f:
+        json.dump(quiz_data, f, indent=2)
+    return quiz_path
+
 # ----------------------------
 # GENERATE SCORM MANIFEST
 # ----------------------------
-def generate_manifest(title, output_dir):
+def generate_manifest(title, output_dir, include_quiz=False):
+    quiz_items = ""
+    quiz_resources = ""
+    if include_quiz:
+        quiz_items = (
+            "      <item identifier=\"QUIZ1\" identifierref=\"RESQ1\">\n"
+            "        <title>Quiz</title>\n"
+            "        <adlcp:masteryscore>80</adlcp:masteryscore>\n"
+            "      </item>\n"
+        )
+        quiz_resources = (
+            f"    <resource identifier=\"RESQ1\" type=\"webcontent\" adlcp:scormtype=\"sco\" href=\"{QUIZ_HTML_NAME}\">\n"
+            f"      <file href=\"{QUIZ_HTML_NAME}\" />\n"
+            f"      <file href=\"{QUIZ_JSON_NAME}\" />\n"
+            f"      <file href=\"{BRANDING_PATH.name}\" />\n"
+            "    </resource>\n"
+        )
+
     manifest = f"""<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="{title.replace(' ', '_').upper()}_SCORM" version="1.0"
  xmlns="http://www.imsproject.org/xsd/imscp_rootv1p1p2"
@@ -147,14 +339,14 @@ def generate_manifest(title, output_dir):
       <item identifier="ITEM1" identifierref="RES1">
         <title>{title}</title>
       </item>
-    </organization>
+{quiz_items}    </organization>
   </organizations>
   <resources>
     <resource identifier="RES1" type="webcontent" adlcp:scormtype="sco" href="index.html">
       <file href="index.html" />
       <file href="{BRANDING_PATH.name}" />
     </resource>
-  </resources>
+{quiz_resources}  </resources>
 </manifest>"""
     manifest_path = output_dir / "imsmanifest.xml"
     with open(manifest_path, "w", encoding="utf-8") as f:
@@ -177,49 +369,144 @@ def create_scorm_package(output_dir, title):
     return zip_path
 
 # ----------------------------
+# PREPARE AND PACKAGE HELPERS
+# ----------------------------
+def prepare_assets(video, output, interval=300, subtitles=None):
+    output_dir = Path(output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    video_src = Path(video)
+
+    if subtitles:
+        srt_src = Path(subtitles)
+        transcript = parse_srt(srt_src)
+        srt_path = output_dir / srt_src.name
+        if srt_src.resolve() != srt_path.resolve():
+            shutil.copy(srt_src, srt_path)
+    else:
+        srt_path = output_dir / f"{video_src.stem}.srt"
+        transcript = transcribe_to_srt(video_src, srt_path)
+
+    md_path = srt_path.with_suffix(".md")
+    generate_markdown(transcript, md_path)
+    print(f"📄 Markdown transcript: {md_path}")
+
+    sections = auto_generate_sections(transcript, interval)
+    final_sections_path = output_dir / f"{output_dir.name}.sections"
+    save_sections(sections, final_sections_path)
+    print(f"📄 Sections file: {final_sections_path}")
+
+    print("✅ Preparation complete. You may edit the Markdown file to add quiz questions before packaging.")
+
+
+def prepare_quiz(input_dir, num_questions=5):
+    """Generate ``quiz.json`` from the Markdown transcript in ``input_dir``."""
+
+    output_dir = Path(input_dir)
+    md_files = list(output_dir.glob("*.md"))
+    if not md_files:
+        raise FileNotFoundError("No markdown transcript found in input directory")
+
+    md_path = md_files[0]
+    quiz_path = generate_quiz_json(md_path, output_dir, num_questions)
+    print(f"📄 Quiz file: {quiz_path}")
+    print("✅ Quiz generation complete. Proceed to the package stage to include it in the SCORM zip.")
+
+
+def build_html(video_url, input_dir, title="SCORM Lesson"):
+    output_dir = Path(input_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    srt_files = list(output_dir.glob("*.srt"))
+    if not srt_files:
+        raise FileNotFoundError("No .srt file found in input directory")
+    srt_path = srt_files[0]
+    transcript = parse_srt(srt_path)
+
+    sections_path = output_dir / f"{output_dir.name}.sections"
+    sections = load_sections(sections_path, transcript)
+    if not sections:
+        sections = auto_generate_sections(transcript, 300)
+        save_sections(sections, sections_path)
+
+    quiz_path = output_dir / QUIZ_JSON_NAME
+    include_quiz = False
+    if quiz_path.exists():
+        include_quiz = True
+        generate_quiz_html(output_dir, title)
+
+    html_file = generate_player_html(transcript, sections, title, output_dir, video_url, True)
+    manifest_file = generate_manifest(title, output_dir, include_quiz)
+
+    print(f"\n✅ Generated SCORM player: {html_file}")
+    print(f"✅ SCORM manifest: {manifest_file}")
+    if include_quiz:
+        print(f"ℹ️ Included quiz file: {quiz_path}")
+    else:
+        print("ℹ️ No quiz.json found. Run the 'quiz' stage to generate one if desired.")
+    print("✏️ You may now edit index.html or imsmanifest.xml before packaging.")
+
+
+def package_scorm(input_dir, title="SCORM Lesson"):
+    output_dir = Path(input_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    html_file = output_dir / "index.html"
+    manifest_file = output_dir / "imsmanifest.xml"
+    if not html_file.exists() or not manifest_file.exists():
+        raise FileNotFoundError("index.html or imsmanifest.xml missing. Run the 'build' stage first.")
+
+    zip_file = create_scorm_package(output_dir, title)
+    print(f"✅ SCORM package: {zip_file}")
+    return zip_file
+
+# ----------------------------
 # MAIN ENTRYPOINT
 # ----------------------------
 def main():
     parser = argparse.ArgumentParser(description="Generate SCORM lesson")
-    parser.add_argument("--video", help="Path to local video file (optional)")
-    parser.add_argument("--video-url", help="Optional: external video URL (YouTube, Vimeo, etc.)")
-    parser.add_argument("--subtitles", help="Path to existing .srt file")
-    parser.add_argument("--output", required=True, help="Output folder")
-    parser.add_argument("--title", default="SCORM Lesson", help="Lesson title")
-    parser.add_argument("--interval", type=int, default=300, help="Auto-section interval in seconds")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    prep = subparsers.add_parser(
+        "prepare", help="Generate subtitles, markdown, and sections from a local video"
+    )
+    prep.add_argument("--video", required=True, help="Path to local video file")
+    prep.add_argument("--output", required=True, help="Output folder")
+    prep.add_argument("--subtitles", help="Path to existing .srt file")
+    prep.add_argument(
+        "--interval", type=int, default=300, help="Auto-section interval in seconds"
+    )
+    quiz_cmd = subparsers.add_parser(
+        "quiz", help="Generate quiz.json from the markdown transcript"
+    )
+    quiz_cmd.add_argument("--input", required=True, help="Folder with prepared assets")
+    quiz_cmd.add_argument(
+        "--num-questions", type=int, default=5, help="Number of questions to generate"
+    )
+
+    build_cmd = subparsers.add_parser(
+        "build", help="Render HTML player and manifest using prepared assets"
+    )
+    build_cmd.add_argument("--video-url", required=True, help="External video URL")
+    build_cmd.add_argument("--input", required=True, help="Folder with prepared assets")
+    build_cmd.add_argument("--title", default="SCORM Lesson", help="Lesson title")
+
+    pack = subparsers.add_parser(
+        "package", help="Zip prepared assets into a SCORM package"
+    )
+    pack.add_argument("--input", required=True, help="Folder containing HTML and manifest")
+    pack.add_argument("--title", default="SCORM Lesson", help="Lesson title")
+
     args = parser.parse_args()
 
-    # Validate input
-    if not args.video and not args.video_url:
-        parser.error("You must provide either --video or --video-url")
+    if args.command == "prepare":
+        prepare_assets(args.video, args.output, args.interval, args.subtitles)
+    elif args.command == "quiz":
+        prepare_quiz(args.input, args.num_questions)
+    elif args.command == "build":
+        build_html(args.video_url, args.input, args.title)
+    elif args.command == "package":
+        package_scorm(args.input, args.title)
 
-    output_dir = Path(args.output)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Decide video source
-    is_url = bool(args.video_url)
-    video_src = args.video_url if is_url else Path(args.video)
-
-    # Subtitle handling
-    if not args.subtitles:
-        parser.error("When using --video-url, please provide --subtitles pointing to a matching .srt")
-    srt_path = Path(args.subtitles)
-    transcript = parse_srt(srt_path)
-
-    # Load custom sections if available
-    sections_path = srt_path.with_suffix(".sections")
-    sections = load_sections(sections_path, transcript)
-    if not sections:
-        sections = auto_generate_sections(transcript, args.interval)
-
-    # Generate SCORM player
-    html_file = generate_player_html(transcript, sections, args.title, output_dir, video_src, is_url)
-    manifest_file = generate_manifest(args.title, output_dir)
-    zip_file = create_scorm_package(output_dir, args.title)
-
-    print(f"\n✅ Generated SCORM player: {html_file}")
-    print(f"✅ SCORM manifest: {manifest_file}")
-    print(f"✅ SCORM package: {zip_file}")
 
 if __name__ == "__main__":
     main()

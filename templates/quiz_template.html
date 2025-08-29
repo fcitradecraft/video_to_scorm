@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>{{TITLE}}</title>
+  <link rel="stylesheet" href="branding.css" />
+  <script>
+    let quizData = {{QUIZ_DATA}}.questions || [];
+    let current = 0;
+    let score = 0;
+    let API = null;
+
+    function initScorm() {
+      try {
+        if (window.API) {
+          API = window.API;
+        } else if (window.parent && window.parent.API) {
+          API = window.parent.API;
+        }
+        if (API) {
+          API.LMSInitialize('');
+        }
+      } catch (e) {}
+    }
+
+    function showQuestion() {
+      const container = document.getElementById('quiz-container');
+      const q = quizData[current];
+      let html = `<h2>${q.prompt}</h2><form id="quiz-form">`;
+      if (q.type === 'multiple_choice') {
+        q.options.forEach(opt => {
+          html += `<label><input type="radio" name="answer" value="${opt}"> ${opt}</label><br/>`;
+        });
+      } else {
+        html += `<label><input type="radio" name="answer" value="True"> True</label><br/>`;
+        html += `<label><input type="radio" name="answer" value="False"> False</label><br/>`;
+      }
+      html += '</form><button type="button" onclick="submitAnswer()">Submit</button>';
+      container.innerHTML = html;
+    }
+
+    function submitAnswer() {
+      const q = quizData[current];
+      const selected = document.querySelector('input[name="answer"]:checked');
+      if (!selected) { alert('Please select an option.'); return; }
+      let correct = false;
+      if (q.type === 'multiple_choice') {
+        correct = selected.value === q.answer;
+      } else {
+        correct = (selected.value === 'True') === q.answer;
+      }
+      if (correct) score++;
+      current++;
+      if (current < quizData.length) {
+        showQuestion();
+      } else {
+        finishQuiz();
+      }
+    }
+
+    function finishQuiz() {
+      const percent = Math.round((score / quizData.length) * 100);
+      try {
+        if (API) {
+          API.LMSSetValue('cmi.core.score.raw', percent.toString());
+          API.LMSSetValue('cmi.core.score.max', '100');
+          API.LMSSetValue('cmi.core.score.min', '0');
+          API.LMSSetValue('cmi.core.lesson_status', percent >= 80 ? 'passed' : 'failed');
+          API.LMSCommit('');
+          API.LMSFinish('');
+        }
+      } catch (e) {}
+      document.getElementById('quiz-container').innerHTML = `<p>Your score: ${percent}</p>`;
+    }
+
+    window.addEventListener('load', () => {
+      initScorm();
+      if (quizData.length === 0) {
+        document.getElementById('quiz-container').innerText = 'No quiz available.';
+        return;
+      }
+      showQuestion();
+    });
+  </script>
+</head>
+<body>
+  <div id="quiz-container">Loading quiz...</div>
+</body>
+</html>
