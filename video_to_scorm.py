@@ -412,20 +412,17 @@ def prepare_quiz(input_dir, num_questions=5):
     print("✅ Quiz generation complete. Proceed to the package stage to include it in the SCORM zip.")
 
 
-def package_scorm(video_url, input_dir, title="SCORM Lesson"):
+def build_html(video_url, input_dir, title="SCORM Lesson"):
     output_dir = Path(input_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Locate necessary files
     srt_files = list(output_dir.glob("*.srt"))
     if not srt_files:
         raise FileNotFoundError("No .srt file found in input directory")
     srt_path = srt_files[0]
     transcript = parse_srt(srt_path)
 
-    md_path = srt_path.with_suffix(".md")
     sections_path = output_dir / f"{output_dir.name}.sections"
-
     sections = load_sections(sections_path, transcript)
     if not sections:
         sections = auto_generate_sections(transcript, 300)
@@ -439,15 +436,28 @@ def package_scorm(video_url, input_dir, title="SCORM Lesson"):
 
     html_file = generate_player_html(transcript, sections, title, output_dir, video_url, True)
     manifest_file = generate_manifest(title, output_dir, include_quiz)
-    zip_file = create_scorm_package(output_dir, title)
 
     print(f"\n✅ Generated SCORM player: {html_file}")
     print(f"✅ SCORM manifest: {manifest_file}")
-    print(f"✅ SCORM package: {zip_file}")
     if include_quiz:
         print(f"ℹ️ Included quiz file: {quiz_path}")
     else:
-        print("⚠️ No quiz.json found. Run the 'quiz' stage to generate one if desired.")
+        print("ℹ️ No quiz.json found. Run the 'quiz' stage to generate one if desired.")
+    print("✏️ You may now edit index.html or imsmanifest.xml before packaging.")
+
+
+def package_scorm(input_dir, title="SCORM Lesson"):
+    output_dir = Path(input_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    html_file = output_dir / "index.html"
+    manifest_file = output_dir / "imsmanifest.xml"
+    if not html_file.exists() or not manifest_file.exists():
+        raise FileNotFoundError("index.html or imsmanifest.xml missing. Run the 'build' stage first.")
+
+    zip_file = create_scorm_package(output_dir, title)
+    print(f"✅ SCORM package: {zip_file}")
+    return zip_file
 
 # ----------------------------
 # MAIN ENTRYPOINT
@@ -473,11 +483,17 @@ def main():
         "--num-questions", type=int, default=5, help="Number of questions to generate"
     )
 
-    pack = subparsers.add_parser(
-        "package", help="Create SCORM package using prepared assets and a video URL"
+    build_cmd = subparsers.add_parser(
+        "build", help="Render HTML player and manifest using prepared assets"
     )
-    pack.add_argument("--video-url", required=True, help="External video URL")
-    pack.add_argument("--input", required=True, help="Folder containing prepared assets")
+    build_cmd.add_argument("--video-url", required=True, help="External video URL")
+    build_cmd.add_argument("--input", required=True, help="Folder with prepared assets")
+    build_cmd.add_argument("--title", default="SCORM Lesson", help="Lesson title")
+
+    pack = subparsers.add_parser(
+        "package", help="Zip prepared assets into a SCORM package"
+    )
+    pack.add_argument("--input", required=True, help="Folder containing HTML and manifest")
     pack.add_argument("--title", default="SCORM Lesson", help="Lesson title")
 
     args = parser.parse_args()
@@ -486,8 +502,10 @@ def main():
         prepare_assets(args.video, args.output, args.interval, args.subtitles)
     elif args.command == "quiz":
         prepare_quiz(args.input, args.num_questions)
+    elif args.command == "build":
+        build_html(args.video_url, args.input, args.title)
     elif args.command == "package":
-        package_scorm(args.video_url, args.input, args.title)
+        package_scorm(args.input, args.title)
 
 
 if __name__ == "__main__":

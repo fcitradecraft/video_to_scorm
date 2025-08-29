@@ -23,9 +23,19 @@ python video_to_scorm.py prepare --video path/to/video.mp4 --output output_dir
 # Stage 2 – create quiz.json from the markdown transcript
 python video_to_scorm.py quiz --input output_dir
 
-# Stage 3 – build the final SCORM package with the external video URL
-python video_to_scorm.py package --video-url URL --input output_dir --title "Lesson Title"
+# Stage 3 – render HTML player and manifest (you may edit these files afterwards)
+python video_to_scorm.py build --video-url URL --input output_dir --title "Lesson Title"
+
+# Stage 4 – zip everything into a SCORM package
+python video_to_scorm.py package --input output_dir --title "Lesson Title"
 ```
 
-The output directory will contain the `.srt`, `.md`, `.sections`, and `quiz.json`
-files. The `package` stage includes `quiz.json` in the final `*_SCORM.zip`.
+The output directory will contain the `.srt`, `.md`, `.sections`, `quiz.json`,
+`index.html`, and `imsmanifest.xml` files. The `build` stage produces the HTML
+player and manifest so you can edit them before running `package`, which bundles
+all assets into the final `*_SCORM.zip`.
+
+> **Preview tip:** opening the generated HTML directly from disk may be blocked
+> by browser security settings. To preview locally, run `python -m http.server`
+> in the output directory and visit `http://localhost:8000/index.html` in your
+> browser.
