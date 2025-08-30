@@ -1,0 +1,23 @@
+[
+  {
+    "id": "q1",
+    "type": "mc",
+    "stem": "Which formula provides the best justification for handling missing values in a dataset intended for forecasting?",
+    "choices": [
+      "IFERROR(AVERAGE(A:A),0)",
+      "AVERAGEIF(A:A,\">0\")",
+      "IFNA(AVERAGE(A:A),0)"
+    ],
+    "answer": 1
+  },
+  {
+    "id": "q2",
+    "type": "rubric",
+    "stem": "Given the sales dataset and the goal of minimizing processing time, defend your chosen formula and explain trade-offs compared to alternatives.",
+    "criteria": [
+      { "id": "c1", "label": "Correctness of formula", "points": 40 },
+      { "id": "c2", "label": "Efficiency and scalability", "points": 30 },
+      { "id": "c3", "label": "Clarity of defense/justification", "points": 30 }
+    ]
+  }
+]
