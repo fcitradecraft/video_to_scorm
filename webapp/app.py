@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import RequestEntityTooLarge
 from pathlib import Path
@@ -39,7 +39,7 @@ def run_with_logs(func, *args, **kwargs):
         output = buf_out.getvalue() + buf_err.getvalue()
         if result is not None:
             output += f"\n{result}"
-        return output, True, None
+        return output, True, result
     except Exception as e:  # pragma: no cover - runtime errors reported to user
         output = buf_out.getvalue() + buf_err.getvalue() + f"\nError: {e}"
         return output, False, e
@@ -81,6 +81,7 @@ def index():
         session.pop("built", None)
         session.pop("last_log", None)
         session.pop("title", None)
+        session.pop("zip_path", None)
 
         flash("File uploaded successfully.")
         return redirect(url_for("index"))
@@ -91,6 +92,7 @@ def index():
         prepared=session.get("prepared"),
         built=session.get("built"),
         title=session.get("title", "SCORM Lesson"),
+        zip_path=session.get("zip_path"),
     )
 
 
@@ -163,13 +165,27 @@ def package():
         return redirect(url_for("index"))
     output_dir = session.get("working_dir")
     title = request.form.get("title") or session.get("title") or "SCORM Lesson"
-    log, ok, err = run_with_logs(package_scorm, output_dir, title)
+    log, ok, result = run_with_logs(package_scorm, output_dir, title)
     session["last_log"] = log
     if ok:
+        session["zip_path"] = str(result)
         flash("Package created.")
     else:
-        flash(f"Packaging failed: {err}")
+        flash(f"Packaging failed: {result}")
     return redirect(url_for("index"))
+
+
+@app.route("/download")
+def download():
+    zip_path = session.get("zip_path")
+    if not zip_path:
+        flash("No package available.")
+        return redirect(url_for("index"))
+    path = Path(zip_path)
+    if not path.exists():
+        flash("Package not found.")
+        return redirect(url_for("index"))
+    return send_from_directory(path.parent, path.name, as_attachment=True)
 
 if __name__ == "__main__":
     app.run(debug=True)
