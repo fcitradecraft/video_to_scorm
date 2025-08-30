@@ -1,17 +1,19 @@
 from flask import Flask, render_template, request, redirect, url_for, flash
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import RequestEntityTooLarge
+from pathlib import Path
 import os
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"))
+BASE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BASE_DIR.parent
+app = Flask(__name__, template_folder=str(PROJECT_ROOT / "templates"))
 app.secret_key = "dev-secret-key"
 
-UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
+UPLOAD_FOLDER = PROJECT_ROOT / "uploads"
 ALLOWED_EXTENSIONS = {"mp4"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB limit
 
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
 app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE
 
 
@@ -38,9 +40,9 @@ def index():
             flash("File too large. Maximum size is 50 MB.")
             return redirect(request.url)
 
-        os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+        UPLOAD_FOLDER.mkdir(exist_ok=True)
         filename = secure_filename(file.filename)
-        save_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+        save_path = UPLOAD_FOLDER / filename
         file.save(save_path)
         flash("File uploaded successfully.")
         return redirect(url_for("index"))
