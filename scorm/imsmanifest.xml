@@ -25,6 +25,10 @@
       </item>
 
 <<<<<< codex/add-items-to-scorm-package-3lte20
+<<<<<< codex/add-items-to-scorm-package-3lte20
+======
+<<<<<< codex/add-items-to-scorm-package-yw5r6z
+>>>>>> dev
       <!-- 2) Graded evaluation (requires video) -->
       <item identifier="ITEM_QUIZ" identifierref="RES_QUIZ">
         <title>2) Graded Evaluation (Scenario-Based)</title>
@@ -52,6 +56,10 @@
   <resources>
 
 <<<<<< codex/add-items-to-scorm-package-3lte20
+<<<<<< codex/add-items-to-scorm-package-3lte20
+======
+<<<<<< codex/add-items-to-scorm-package-yw5r6z
+>>>>>> dev
     <!-- Shared assets (brand CSS and API helper) -->
     <resource identifier="RES_SHARED" type="webcontent" adlcp:scormtype="asset" href="shared/branding.css">
       <file href="shared/branding.css"/>
@@ -76,6 +84,10 @@
     </resource>
 
 <<<<<< codex/add-items-to-scorm-package-3lte20
+<<<<<< codex/add-items-to-scorm-package-3lte20
+======
+<<<<<< codex/add-items-to-scorm-package-yw5r6z
+>>>>>> dev
     <!-- Slides viewer (asset page) -->
     <resource identifier="RES_SLIDES" type="webcontent" adlcp:scormtype="asset" href="slides/slides.html">
 ======
@@ -96,6 +108,10 @@
       <file href="quiz/quiz.js"/>
       <file href="quiz/questions.json"/>
 <<<<<< codex/add-items-to-scorm-package-3lte20
+<<<<<< codex/add-items-to-scorm-package-3lte20
+======
+<<<<<< codex/add-items-to-scorm-package-yw5r6z
+>>>>>> dev
 ======
       <file href="quiz/APIWrapper.js"/>
 >>>>>> dev
