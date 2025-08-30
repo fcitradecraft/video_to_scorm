@@ -21,7 +21,7 @@ app.secret_key = "dev-secret-key"
 UPLOAD_FOLDER = PROJECT_ROOT / "uploads"
 OUTPUTS_FOLDER = PROJECT_ROOT / "outputs"
 ALLOWED_EXTENSIONS = {"mp4"}
-MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB limit
+MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB limit
 
 app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
 app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE
@@ -61,7 +61,7 @@ def index():
         file_length = file.tell()
         file.seek(0)
         if file_length > MAX_FILE_SIZE:
-            flash("File too large. Maximum size is 50 MB.")
+            flash("File too large. Maximum size is 2 GB.")
             return redirect(request.url)
 
         UPLOAD_FOLDER.mkdir(exist_ok=True)
@@ -98,7 +98,7 @@ def index():
 
 @app.errorhandler(RequestEntityTooLarge)
 def handle_large_file(_):
-    flash("File too large. Maximum size is 50 MB.")
+    flash("File too large. Maximum size is 2 GB.")
     return redirect(url_for("index"))
 
 
