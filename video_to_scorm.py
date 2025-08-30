@@ -302,32 +302,93 @@ def generate_quiz_json(md_path, output_dir, limit=5):
 # GENERATE SCORM MANIFEST
 # ----------------------------
 def generate_manifest(title, output_dir, include_quiz=False):
-    quiz_items = ""
-    quiz_resources = ""
+    """Create imsmanifest.xml with separate video, slides and quiz SCOs."""
+
+    # ----------------------------
+    # ITEMS
+    # ----------------------------
+    items = [
+        '      <item identifier="ITEM_VIDEO" identifierref="RES_VIDEO">',
+        '        <title>Video</title>',
+        '      </item>',
+        '      <item identifier="ITEM_SLIDES" identifierref="RES_SLIDES">',
+        '        <title>Slides</title>',
+        '        <adlcp:prerequisites type="aicc_script"><![CDATA[ITEM_VIDEO]]></adlcp:prerequisites>',
+        '      </item>',
+    ]
+
     if include_quiz:
-        quiz_items = (
-            "      <item identifier=\"QUIZ1\" identifierref=\"RESQ1\">\n"
-            "        <title>Quiz</title>\n"
-            "        <adlcp:masteryscore>80</adlcp:masteryscore>\n"
-            "      </item>\n"
+        items.extend(
+            [
+                '      <item identifier="ITEM_QUIZ" identifierref="RES_QUIZ">',
+                '        <title>Quiz</title>',
+                '        <adlcp:masteryscore>80</adlcp:masteryscore>',
+                '        <adlcp:prerequisites type="aicc_script"><![CDATA[ITEM_SLIDES]]></adlcp:prerequisites>',
+                '      </item>',
+            ]
         )
-        quiz_resources = (
-            f"    <resource identifier=\"RESQ1\" type=\"webcontent\" adlcp:scormtype=\"sco\" href=\"{QUIZ_HTML_NAME}\">\n"
-            f"      <file href=\"{QUIZ_HTML_NAME}\" />\n"
-            f"      <file href=\"{QUIZ_JSON_NAME}\" />\n"
-            f"      <file href=\"{BRANDING_PATH.name}\" />\n"
-            "    </resource>\n"
-        )
+
+    items_str = "\n".join(items)
+
+    # ----------------------------
+    # RESOURCES
+    # ----------------------------
+    res_video = [
+        '    <resource identifier="RES_VIDEO" type="webcontent" adlcp:scormtype="sco" href="video/index.html">',
+        '      <file href="video/index.html" />',
+        '      <file href="video/video.css" />',
+        '      <file href="video/video.js" />',
+        '      <file href="video/sidebar.js" />',
+        '      <file href="video/sections.json" />',
+        '      <dependency identifierref="RES_SHARED" />',
+        '    </resource>',
+    ]
+
+    slides_dir = output_dir / "slides"
+    pptx_files = []
+    if slides_dir.exists():
+        pptx_files = [f"      <file href=\"slides/{p.name}\" />" for p in slides_dir.glob("*.pptx")]
+
+    res_slides = [
+        '    <resource identifier="RES_SLIDES" type="webcontent" adlcp:scormtype="sco" href="slides/slides.html">',
+        '      <file href="slides/slides.html" />',
+        '      <file href="slides/viewer.css" />',
+        '      <file href="slides/viewer.js" />',
+        *pptx_files,
+        '      <dependency identifierref="RES_SHARED" />',
+        '    </resource>',
+    ]
+
+    resources = res_video + res_slides
+
+    if include_quiz:
+        res_quiz = [
+            '    <resource identifier="RES_QUIZ" type="webcontent" adlcp:scormtype="sco" href="quiz/quiz.html">',
+            '      <file href="quiz/quiz.html" />',
+            '      <file href="quiz/quiz.css" />',
+            '      <file href="quiz/quiz.js" />',
+            '      <file href="quiz/questions.json" />',
+            '      <file href="quiz/APIWrapper.js" />',
+            '      <dependency identifierref="RES_SHARED" />',
+            '    </resource>',
+        ]
+        resources += res_quiz
+
+    res_shared = [
+        '    <resource identifier="RES_SHARED" type="webcontent" adlcp:scormtype="asset">',
+        '      <file href="shared/branding.css" />',
+        '    </resource>',
+    ]
+    resources += res_shared
+
+    resources_str = "\n".join(resources)
 
     manifest = f"""<?xml version="1.0" encoding="UTF-8"?>
 <manifest identifier="{title.replace(' ', '_').upper()}_SCORM" version="1.0"
  xmlns="http://www.imsproject.org/xsd/imscp_rootv1p1p2"
  xmlns:adlcp="http://www.adlnet.org/xsd/adlcp_rootv1p2"
  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
- xsi:schemaLocation="http://www.imsproject.org/xsd/imscp_rootv1p1p2
- imscp_rootv1p1p2.xsd
- http://www.adlnet.org/xsd/adlcp_rootv1p2
- adlcp_rootv1p2.xsd">
+ xsi:schemaLocation="http://www.imsproject.org/xsd/imscp_rootv1p1p2 imscp_rootv1p1p2.xsd http://www.adlnet.org/xsd/adlcp_rootv1p2 adlcp_rootv1p2.xsd">
 
   <metadata>
     <schema>ADL SCORM</schema>
@@ -336,18 +397,14 @@ def generate_manifest(title, output_dir, include_quiz=False):
   <organizations default="ORG1">
     <organization identifier="ORG1">
       <title>{title}</title>
-      <item identifier="ITEM1" identifierref="RES1">
-        <title>{title}</title>
-      </item>
-{quiz_items}    </organization>
+{items_str}
+    </organization>
   </organizations>
   <resources>
-    <resource identifier="RES1" type="webcontent" adlcp:scormtype="sco" href="index.html">
-      <file href="index.html" />
-      <file href="{BRANDING_PATH.name}" />
-    </resource>
-{quiz_resources}  </resources>
+{resources_str}
+  </resources>
 </manifest>"""
+
     manifest_path = output_dir / "imsmanifest.xml"
     with open(manifest_path, "w", encoding="utf-8") as f:
         f.write(manifest)
