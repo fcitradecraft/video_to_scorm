@@ -40,9 +40,22 @@
     Sidebar.updateByTime(player.currentTime);
     if (player.duration && player.currentTime / player.duration >= 0.9) {
       scorm.set("cmi.core.lesson_status", "completed");
+<<<<<< codex/add-items-to-scorm-package-3lte20
+      scorm.commit();
     }
   });
 
+  player.addEventListener('ended', () => {
+    scorm.set("cmi.core.lesson_status", "completed");
+    scorm.commit();
+    scorm.finish();
+  });
+
+======
+    }
+  });
+
+>>>>>> dev
   // On unload, save & close
   window.addEventListener('beforeunload', () => {
     scorm.set("cmi.core.lesson_location", player.currentTime.toFixed(1));
