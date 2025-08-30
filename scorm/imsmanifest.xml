@@ -24,16 +24,10 @@
         <adlcp:datafromlms>{"bloomTarget":"Evaluate"}</adlcp:datafromlms>
       </item>
 
-      <!-- 2) PPTX viewer module (requires video first) -->
-      <item identifier="ITEM_PPTX" identifierref="RES_PPTX">
-        <title>2) Slides: Workbook & Examples (.pptx)</title>
-        <adlcp:prerequisites type="aicc_script">ITEM_VIDEO</adlcp:prerequisites>
-      </item>
-
-      <!-- 3) Graded evaluation (requires video & slides) -->
+      <!-- 2) Graded evaluation (requires video) -->
       <item identifier="ITEM_QUIZ" identifierref="RES_QUIZ">
-        <title>3) Graded Evaluation (Scenario-Based)</title>
-        <adlcp:prerequisites type="aicc_script">ITEM_VIDEO AND ITEM_PPTX</adlcp:prerequisites>
+        <title>2) Graded Evaluation (Scenario-Based)</title>
+        <adlcp:prerequisites type="aicc_script">ITEM_VIDEO</adlcp:prerequisites>
         <adlcp:masteryscore>80</adlcp:masteryscore>
         <adlcp:maxtimeallowed>00:20:00</adlcp:maxtimeallowed>
         <adlcp:timelimitaction>exit,message</adlcp:timelimitaction>
@@ -47,7 +41,7 @@
     <!-- Shared assets (brand CSS and API helper) -->
     <resource identifier="RES_SHARED" type="webcontent" adlcp:scormtype="asset" href="shared/branding.css">
       <file href="shared/branding.css"/>
-        <file href="shared/APIWrapper.js"/>
+      <file href="shared/APIWrapper.js"/>
     </resource>
 
     <!-- VIDEO SCO -->
@@ -62,8 +56,8 @@
       <dependency identifierref="RES_SHARED"/>
     </resource>
 
-    <!-- PPTX VIEWER SCO -->
-    <resource identifier="RES_PPTX" type="webcontent" adlcp:scormtype="sco" href="slides/slides.html">
+    <!-- Slides viewer (asset page) -->
+    <resource identifier="RES_SLIDES" type="webcontent" adlcp:scormtype="asset" href="slides/slides.html">
       <file href="slides/slides.html"/>
       <file href="slides/viewer.css"/>
       <file href="slides/viewer.js"/>
