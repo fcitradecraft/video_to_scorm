@@ -39,10 +39,10 @@ def run_with_logs(func, *args, **kwargs):
         output = buf_out.getvalue() + buf_err.getvalue()
         if result is not None:
             output += f"\n{result}"
-        return output, True
+        return output, True, None
     except Exception as e:  # pragma: no cover - runtime errors reported to user
         output = buf_out.getvalue() + buf_err.getvalue() + f"\nError: {e}"
-        return output, False
+        return output, False, e
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -107,13 +107,17 @@ def prepare():
     if not video_path or not output_dir:
         flash("Upload a video first.")
         return redirect(url_for("index"))
-    log, ok = run_with_logs(prepare_assets, video_path, output_dir, 300)
+    interval = request.form.get("interval", type=int, default=300)
+    log, ok, err = run_with_logs(prepare_assets, video_path, output_dir, interval)
     session["last_log"] = log
     if ok:
         session["prepared"] = True
         flash("Preparation complete.")
     else:
-        flash("Preparation failed.")
+        if isinstance(err, RuntimeError) and "Whisper" in str(err):
+            flash("Preparation failed: Whisper dependency missing.")
+        else:
+            flash("Preparation failed: transcription error.")
     return redirect(url_for("index"))
 
 
@@ -123,12 +127,13 @@ def quiz():
         flash("Run prepare first.")
         return redirect(url_for("index"))
     output_dir = session.get("working_dir")
-    log, ok = run_with_logs(prepare_quiz, output_dir)
+    num_questions = request.form.get("num_questions", type=int, default=5)
+    log, ok, err = run_with_logs(prepare_quiz, output_dir, num_questions)
     session["last_log"] = log
     if ok:
         flash("Quiz generation complete.")
     else:
-        flash("Quiz generation failed.")
+        flash(f"Quiz generation failed: {err}")
     return redirect(url_for("index"))
 
 
@@ -140,14 +145,14 @@ def build():
     output_dir = session.get("working_dir")
     video_url = request.form.get("video_url")
     title = request.form.get("title") or "SCORM Lesson"
-    log, ok = run_with_logs(build_html, video_url, output_dir, title)
+    log, ok, err = run_with_logs(build_html, video_url, output_dir, title)
     session["last_log"] = log
     if ok:
         session["built"] = True
         session["title"] = title
         flash("Build complete.")
     else:
-        flash("Build failed.")
+        flash(f"Build failed: {err}")
     return redirect(url_for("index"))
 
 
@@ -158,12 +163,12 @@ def package():
         return redirect(url_for("index"))
     output_dir = session.get("working_dir")
     title = request.form.get("title") or session.get("title") or "SCORM Lesson"
-    log, ok = run_with_logs(package_scorm, output_dir, title)
+    log, ok, err = run_with_logs(package_scorm, output_dir, title)
     session["last_log"] = log
     if ok:
         flash("Package created.")
     else:
-        flash("Packaging failed.")
+        flash(f"Packaging failed: {err}")
     return redirect(url_for("index"))
 
 if __name__ == "__main__":
