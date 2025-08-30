@@ -3,6 +3,15 @@ from werkzeug.utils import secure_filename
 from werkzeug.exceptions import RequestEntityTooLarge
 from pathlib import Path
 import os
+from io import StringIO
+import contextlib
+
+from video_to_scorm import (
+    prepare_assets,
+    prepare_quiz,
+    build_html,
+    package_scorm,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
@@ -20,6 +29,20 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE
 
 def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def run_with_logs(func, *args, **kwargs):
+    buf_out, buf_err = StringIO(), StringIO()
+    try:
+        with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
+            result = func(*args, **kwargs)
+        output = buf_out.getvalue() + buf_err.getvalue()
+        if result is not None:
+            output += f"\n{result}"
+        return output, True
+    except Exception as e:  # pragma: no cover - runtime errors reported to user
+        output = buf_out.getvalue() + buf_err.getvalue() + f"\nError: {e}"
+        return output, False
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -51,15 +74,96 @@ def index():
         workdir = OUTPUTS_FOLDER / base
         workdir.mkdir(parents=True, exist_ok=True)
         session["working_dir"] = str(workdir)
+        session["video_path"] = str(save_path)
+
+        # Reset pipeline state on new upload
+        session.pop("prepared", None)
+        session.pop("built", None)
+        session.pop("last_log", None)
+        session.pop("title", None)
 
         flash("File uploaded successfully.")
         return redirect(url_for("index"))
-    return render_template("index.html")
+    return render_template(
+        "index.html",
+        logs=session.get("last_log"),
+        video_uploaded="video_path" in session,
+        prepared=session.get("prepared"),
+        built=session.get("built"),
+        title=session.get("title", "SCORM Lesson"),
+    )
 
 
 @app.errorhandler(RequestEntityTooLarge)
 def handle_large_file(_):
     flash("File too large. Maximum size is 50 MB.")
+    return redirect(url_for("index"))
+
+
+@app.route("/prepare", methods=["POST"])
+def prepare():
+    video_path = session.get("video_path")
+    output_dir = session.get("working_dir")
+    if not video_path or not output_dir:
+        flash("Upload a video first.")
+        return redirect(url_for("index"))
+    log, ok = run_with_logs(prepare_assets, video_path, output_dir, 300)
+    session["last_log"] = log
+    if ok:
+        session["prepared"] = True
+        flash("Preparation complete.")
+    else:
+        flash("Preparation failed.")
+    return redirect(url_for("index"))
+
+
+@app.route("/quiz", methods=["POST"])
+def quiz():
+    if not session.get("prepared"):
+        flash("Run prepare first.")
+        return redirect(url_for("index"))
+    output_dir = session.get("working_dir")
+    log, ok = run_with_logs(prepare_quiz, output_dir)
+    session["last_log"] = log
+    if ok:
+        flash("Quiz generation complete.")
+    else:
+        flash("Quiz generation failed.")
+    return redirect(url_for("index"))
+
+
+@app.route("/build", methods=["POST"])
+def build():
+    if not session.get("prepared"):
+        flash("Run prepare first.")
+        return redirect(url_for("index"))
+    output_dir = session.get("working_dir")
+    video_url = request.form.get("video_url")
+    title = request.form.get("title") or "SCORM Lesson"
+    log, ok = run_with_logs(build_html, video_url, output_dir, title)
+    session["last_log"] = log
+    if ok:
+        session["built"] = True
+        session["title"] = title
+        flash("Build complete.")
+    else:
+        flash("Build failed.")
+    return redirect(url_for("index"))
+
+
+@app.route("/package", methods=["POST"])
+def package():
+    if not session.get("built"):
+        flash("Run build first.")
+        return redirect(url_for("index"))
+    output_dir = session.get("working_dir")
+    title = request.form.get("title") or session.get("title") or "SCORM Lesson"
+    log, ok = run_with_logs(package_scorm, output_dir, title)
+    session["last_log"] = log
+    if ok:
+        flash("Package created.")
+    else:
+        flash("Packaging failed.")
     return redirect(url_for("index"))
 
 if __name__ == "__main__":
