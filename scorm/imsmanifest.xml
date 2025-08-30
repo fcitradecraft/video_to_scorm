@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest identifier="FCX4_ADVANCED_FORMULAS_SCORM" version="1.0"
+  xmlns="http://www.imsproject.org/xsd/imscp_rootv1p1p2"
+  xmlns:adlcp="http://www.adlnet.org/xsd/adlcp_rootv1p2"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.imsproject.org/xsd/imscp_rootv1p1p2
+    imscp_rootv1p1p2.xsd
+    http://www.adlnet.org/xsd/adlcp_rootv1p2
+    adlcp_rootv1p2.xsd">
+
+  <metadata>
+    <schema>ADL SCORM</schema>
+    <schemaversion>1.2</schemaversion>
+  </metadata>
+
+  <organizations default="ORG1">
+    <organization identifier="ORG1">
+      <title>FCX4 Advanced Formulas</title>
+
+      <!-- 1) Video module with section-linked sidebar -->
+      <item identifier="ITEM_VIDEO" identifierref="RES_VIDEO">
+        <title>1) Video: Advanced Formulas (with Section Sidebar)</title>
+        <!-- Optional: pass config down to the SCO -->
+        <adlcp:datafromlms>{"bloomTarget":"Evaluate"}</adlcp:datafromlms>
+      </item>
+
+      <!-- 2) PPTX viewer module (requires video first) -->
+      <item identifier="ITEM_PPTX" identifierref="RES_PPTX">
+        <title>2) Slides: Workbook & Examples (.pptx)</title>
+        <adlcp:prerequisites type="aicc_script">ITEM_VIDEO</adlcp:prerequisites>
+      </item>
+
+      <!-- 3) Graded evaluation (requires video & slides) -->
+      <item identifier="ITEM_QUIZ" identifierref="RES_QUIZ">
+        <title>3) Graded Evaluation (Scenario-Based)</title>
+        <adlcp:prerequisites type="aicc_script">ITEM_VIDEO AND ITEM_PPTX</adlcp:prerequisites>
+        <adlcp:masteryscore>80</adlcp:masteryscore>
+        <adlcp:maxtimeallowed>00:20:00</adlcp:maxtimeallowed>
+        <adlcp:timelimitaction>exit,message</adlcp:timelimitaction>
+      </item>
+
+    </organization>
+  </organizations>
+
+  <resources>
+
+    <!-- Shared assets (brand CSS and API helper) -->
+    <resource identifier="RES_SHARED" type="webcontent" adlcp:scormtype="asset" href="shared/branding.css">
+      <file href="shared/branding.css"/>
+        <file href="shared/APIWrapper.js"/>
+    </resource>
+
+    <!-- VIDEO SCO -->
+    <resource identifier="RES_VIDEO" type="webcontent" adlcp:scormtype="sco" href="video/index.html">
+      <file href="video/index.html"/>
+      <file href="video/video.css"/>
+      <file href="video/video.js"/>
+      <file href="video/sidebar.js"/>
+      <file href="video/sections.json"/>
+      <file href="media/advanced-formulas.mp4"/>
+      <file href="media/advanced-formulas.vtt"/>
+      <dependency identifierref="RES_SHARED"/>
+    </resource>
+
+    <!-- PPTX VIEWER SCO -->
+    <resource identifier="RES_PPTX" type="webcontent" adlcp:scormtype="sco" href="slides/slides.html">
+      <file href="slides/slides.html"/>
+      <file href="slides/viewer.css"/>
+      <file href="slides/viewer.js"/>
+      <file href="slides/FCX4_Advanced_Formulas.pptx"/>
+      <dependency identifierref="RES_SHARED"/>
+    </resource>
+
+    <!-- QUIZ SCO -->
+    <resource identifier="RES_QUIZ" type="webcontent" adlcp:scormtype="sco" href="quiz/quiz.html">
+      <file href="quiz/quiz.html"/>
+      <file href="quiz/quiz.css"/>
+      <file href="quiz/quiz.js"/>
+      <file href="quiz/questions.json"/>
+      <dependency identifierref="RES_SHARED"/>
+    </resource>
+
+  </resources>
+</manifest>
