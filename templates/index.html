@@ -36,6 +36,12 @@
         <button type="submit" {% if not built %}disabled{% endif %}>Package</button>
     </form>
 
+    {% if zip_path %}
+    <form action="{{ url_for('download') }}" method="get">
+        <button type="submit">Download</button>
+    </form>
+    {% endif %}
+
     {% if logs %}
     <h2>Logs</h2>
     <pre>{{ logs }}</pre>
