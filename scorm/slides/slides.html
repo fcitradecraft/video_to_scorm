@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Slides Viewer</title>
+  <link rel="stylesheet" href="../shared/branding.css">
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+  <header class="bar">
+    <h1>FCX4 Advanced Formulas — Slides</h1>
+    <div class="actions">
+      <a class="btn" href="../assets/FCX4_Advanced_Formulas.pptx" download>Download .pptx</a>
+      <!-- Optional PDF fallback if you export one -->
+      <a id="openPdf" class="btn secondary" href="#" hidden>Open PDF</a>
+      <button id="btn-reviewed" class="btn success">Mark Slides Reviewed</button>
+    </div>
+  </header>
+
+  <main class="viewer">
+    <!-- Offline-friendly: try to show a PDF if present; otherwise show instructions -->
+    <iframe id="frame" title="Slides Frame" sandbox="allow-same-origin allow-scripts allow-forms"></iframe>
+
+    <section id="fallback" class="fallback" hidden>
+      <h2>Viewing Tips</h2>
+      <ol>
+        <li>Download the <strong>.pptx</strong> using the button above and open it locally, or</li>
+        <li>Provide a <code>../assets/FCX4_Advanced_Formulas.pdf</code> to enable in-browser viewing.</li>
+      </ol>
+    </section>
+  </main>
+
+  <script src="../shared/APIWrapper.js"></script>
+  <script src="viewer.js"></script>
+</body>
+</html>
